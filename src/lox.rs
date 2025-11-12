@@ -1,9 +1,8 @@
 //! blah
-use crate::{error::LoxError, scanner::Scanner, token::Token};
+use crate::{error::LoxError, scanner::Scanner};
 use std::{
-    collections::HashMap,
     fs::File,
-    io::{Error, Read, Write, stderr, stdin, stdout},
+    io::{stderr, stdin, stdout, Error, Read, Write},
     process::exit,
 };
 
@@ -57,7 +56,7 @@ impl Lox {
 
     /// Run a string of lox
     pub fn run(&mut self, source: String) {
-        let scanner = Scanner::new(source);
+        let mut scanner = Scanner::new(source);
         match scanner.scan_tokens() {
             Ok(tokens) => {
                 for token in tokens {

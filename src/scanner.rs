@@ -1,5 +1,5 @@
 //! The definition for the Lox scanner
-use std::{collections::HashMap, fmt::Display, thread::current};
+use std::collections::HashMap;
 
 use crate::{
     error::{ErrorLine, LoxError},
