@@ -7,6 +7,15 @@ pub enum Literal {
     Number { val: f64 },
 }
 
+impl ToString for Literal {
+    fn to_string(&self) -> String {
+        match self {
+            Literal::String { val } => val.to_string(),
+            Literal::Number { val } => val.to_string(),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum TokenType {
     // Single-character tokens.
@@ -62,7 +71,7 @@ pub enum TokenType {
 #[derive(Clone)]
 pub struct Token {
     token_type: TokenType,
-    lexeme: String,
+    pub lexeme: String,
     literal: Option<Literal>,
     line: usize,
 }
