@@ -1,3 +1,7 @@
+use crate::token::Token;
+
+pub type LoxResult<T> = Result<T, LoxError>;
+
 /// Error line class
 #[derive(Debug, Clone)]
 pub struct ErrorLine {
@@ -15,5 +19,9 @@ pub enum LoxError {
     ScannerError {
         /// All errors the scanner encountered
         errors: Vec<ErrorLine>,
+    },
+    ParseError {
+        /// All errors the Parser encountered
+        error: (Token, String),
     },
 }

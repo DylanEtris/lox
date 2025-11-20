@@ -5,6 +5,8 @@ use std::fmt::Display;
 pub enum Literal {
     String { val: String },
     Number { val: f64 },
+    Bool { val: bool },
+    Nil,
 }
 
 impl ToString for Literal {
@@ -12,11 +14,13 @@ impl ToString for Literal {
         match self {
             Literal::String { val } => val.to_string(),
             Literal::Number { val } => val.to_string(),
+            Literal::Bool { val } => val.to_string(),
+            Literal::Nil => "nil".to_string(),
         }
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TokenType {
     // Single-character tokens.
     LeftParen,
@@ -68,12 +72,12 @@ pub enum TokenType {
 }
 
 /// Lox token
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Token {
-    token_type: TokenType,
+    pub token_type: TokenType,
     pub lexeme: String,
-    literal: Option<Literal>,
-    line: usize,
+    pub literal: Option<Literal>,
+    pub line: usize,
 }
 
 impl Token {

@@ -1,8 +1,14 @@
 //! blah
-use crate::{error::LoxError, scanner::Scanner};
+use crate::{
+    ast_printer::AstPrinter,
+    error::LoxError,
+    parser::Parser,
+    scanner::Scanner,
+    token::{Token, TokenType},
+};
 use std::{
     fs::File,
-    io::{stderr, stdin, stdout, Error, Read, Write},
+    io::{Error, Read, Write, stderr, stdin, stdout},
     process::exit,
 };
 
@@ -59,9 +65,19 @@ impl Lox {
         let mut scanner = Scanner::new(source);
         match scanner.scan_tokens() {
             Ok(tokens) => {
-                for token in tokens {
-                    println!("{}", token);
-                }
+                let mut parser = Parser::new(tokens);
+                let expression = match parser.parse() {
+                    Ok(expr) => expr.unwrap(),
+                    Err(e) => {
+                        for error in e {
+                            self.report_parse_error(error.0, error.1);
+                        }
+                        return;
+                    }
+                };
+
+                let printer = AstPrinter {};
+                println!("{}", printer.print(&expression))
             }
             Err(e) => self.error(e).unwrap(),
         };
@@ -74,13 +90,29 @@ impl Lox {
                     self.report(error.line, String::new(), error.message)?
                 }
             }
+            LoxError::ParseError { error } => self.report_parse_error(error.0, error.1),
         }
         Ok(())
     }
 
     fn report(&mut self, line: usize, where_at: String, message: String) -> Result<(), Error> {
-        stderr().write_all(format!("[line {}] Error{}: {}", line, where_at, message).as_bytes())?;
+        stderr()
+            .write_all(format!("[line {}] Error{}: {}\n", line, where_at, message).as_bytes())?;
         self.had_error = true;
         Ok(())
+    }
+
+    fn report_parse_error(&mut self, token: Token, message: String) {
+        if token.token_type == TokenType::Eof {
+            self.report(token.line, " at end".to_string(), message)
+                .unwrap();
+        } else {
+            self.report(
+                token.line,
+                " at '".to_string() + &token.lexeme + "'",
+                message,
+            )
+            .unwrap();
+        }
     }
 }
