@@ -1,11 +1,6 @@
 use std::{env::args, io::Error};
 
-use compiler::{
-    Lox,
-    ast_printer::AstPrinter,
-    expr::Expr,
-    token::{Literal, Token, TokenType},
-};
+use compiler::Lox;
 
 fn main() -> Result<(), Error> {
     //let expression = Expr::Binary {

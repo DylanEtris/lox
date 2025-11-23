@@ -1,7 +1,5 @@
 use crate::{
-    Lox,
-    error::{LoxError, LoxResult},
-    expr::{self, Expr},
+    expr::{Expr},
     token::{Literal, Token, TokenType},
 };
 

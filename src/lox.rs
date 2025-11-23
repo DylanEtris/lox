@@ -2,7 +2,7 @@
 use crate::{
     error::LoxError,
     expr::RuntimeError,
-    interpreter::{self, Interpreter},
+    interpreter::{Interpreter},
     parser::Parser,
     scanner::Scanner,
     token::{Token, TokenType},
