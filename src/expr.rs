@@ -1,10 +1,18 @@
 use crate::token::{Literal, Token};
 
+#[derive(Debug)]
+pub struct RuntimeError {
+    pub token: Token,
+    pub message: String,
+}
+
+pub type AstResult<T> = Result<T, RuntimeError>;
+
 pub trait ExprVisitor<T> {
-    fn visit_binary(&self, expr: &Expr) -> T;
-    fn visit_grouping(&self, expr: &Expr) -> T;
-    fn visit_literal(&self, expr: &Expr) -> T;
-    fn visit_unary(&self, expr: &Expr) -> T;
+    fn visit_binary(&self, expr: &Expr) -> AstResult<T>;
+    fn visit_grouping(&self, expr: &Expr) -> AstResult<T>;
+    fn visit_literal(&self, expr: &Expr) -> AstResult<T>;
+    fn visit_unary(&self, expr: &Expr) -> AstResult<T>;
 }
 
 pub enum Expr {
@@ -26,7 +34,7 @@ pub enum Expr {
 }
 
 impl Expr {
-    pub fn accept<T: ExprVisitor<U>, U>(&self, visitor: T) -> U {
+    pub fn accept<T: ExprVisitor<U>, U>(&self, visitor: T) -> AstResult<U> {
         match self {
             Self::Binary {
                 left: _,

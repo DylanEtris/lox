@@ -1,7 +1,8 @@
 //! blah
 use crate::{
-    ast_printer::AstPrinter,
     error::LoxError,
+    expr::RuntimeError,
+    interpreter::{self, Interpreter},
     parser::Parser,
     scanner::Scanner,
     token::{Token, TokenType},
@@ -16,6 +17,8 @@ use std::{
 #[derive(Default)]
 pub struct Lox {
     had_error: bool,
+    had_runtime_error: bool,
+    interpreter: Interpreter,
 }
 
 impl Lox {
@@ -41,6 +44,9 @@ impl Lox {
         if self.had_error {
             exit(65);
         }
+        if self.had_runtime_error {
+            exit(70);
+        }
         Ok(())
     }
 
@@ -63,24 +69,32 @@ impl Lox {
     /// Run a string of lox
     pub fn run(&mut self, source: String) {
         let mut scanner = Scanner::new(source);
-        match scanner.scan_tokens() {
-            Ok(tokens) => {
-                let mut parser = Parser::new(tokens);
-                let expression = match parser.parse() {
-                    Ok(expr) => expr.unwrap(),
-                    Err(e) => {
-                        for error in e {
-                            self.report_parse_error(error.0, error.1);
-                        }
-                        return;
-                    }
-                };
-
-                let printer = AstPrinter {};
-                println!("{}", printer.print(&expression))
+        let tokens = match scanner.scan_tokens() {
+            Ok(tokens) => tokens,
+            Err(e) => {
+                self.error(e).unwrap();
+                return;
             }
-            Err(e) => self.error(e).unwrap(),
         };
+        let mut parser = Parser::new(tokens);
+        let expression = match parser.parse() {
+            Ok(expr) => expr.unwrap(),
+            Err(e) => {
+                for error in e {
+                    self.report_parse_error(error.0, error.1);
+                }
+                return;
+            }
+        };
+        let _ = match self.interpreter.interpret(expression) {
+            Ok(()) => (),
+            Err(e) => self.runtime_error(e),
+        };
+    }
+
+    fn runtime_error(&mut self, error: RuntimeError) {
+        println!("{}\n[line {}]", error.message, error.token.line);
+        self.had_runtime_error = true;
     }
 
     fn error(&mut self, lox_error: LoxError) -> Result<(), Error> {

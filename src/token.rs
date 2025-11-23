@@ -1,5 +1,5 @@
 //! The definition for the Lox tokens
-use std::fmt::Display;
+use std::{fmt::Display, ops};
 
 #[derive(Debug, Clone)]
 pub enum Literal {
@@ -7,6 +7,101 @@ pub enum Literal {
     Number { val: f64 },
     Bool { val: bool },
     Nil,
+}
+
+impl Literal {
+    fn cast_f64(self) -> Result<f64, String> {
+        match self {
+            Self::Number { val } => Ok(val),
+            _ => Err("Expected a number.".to_string()),
+        }
+    }
+}
+
+impl ops::Not for Literal {
+    type Output = Literal;
+
+    fn not(self) -> Self::Output {
+        match self {
+            Self::Bool { val } => Self::Bool { val: !val },
+            _ => panic!("Expected a bool."),
+        }
+    }
+}
+
+impl ops::Add for Literal {
+    type Output = Literal;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        match (self, rhs) {
+            (Self::Number { val: left }, Self::Number { val: right }) => {
+                Literal::Number { val: left + right }
+            }
+            (Self::String { val: left }, Self::String { val: right }) => {
+                Literal::String { val: left + &right }
+            }
+            _ => Literal::Nil,
+        }
+    }
+}
+
+impl ops::Div for Literal {
+    type Output = Literal;
+
+    fn div(self, rhs: Self) -> Self::Output {
+        let left = self.cast_f64().unwrap();
+        let right = rhs.cast_f64().unwrap();
+        Literal::Number { val: left / right }
+    }
+}
+
+impl ops::Mul for Literal {
+    type Output = Literal;
+
+    fn mul(self, rhs: Self) -> Self::Output {
+        let left = self.cast_f64().unwrap();
+        let right = rhs.cast_f64().unwrap();
+        Literal::Number { val: left * right }
+    }
+}
+
+impl ops::Neg for Literal {
+    type Output = Literal;
+
+    fn neg(self) -> Self::Output {
+        let val = self.cast_f64().unwrap();
+        Literal::Number { val: -val }
+    }
+}
+
+impl PartialOrd for Literal {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        match (self, other) {
+            (Self::Number { val: left }, Self::Number { val: right }) => left.partial_cmp(right),
+            _ => panic!("Expected number."),
+        }
+    }
+}
+
+impl PartialEq for Literal {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::String { val: l_val }, Self::String { val: r_val }) => l_val == r_val,
+            (Self::Number { val: l_val }, Self::Number { val: r_val }) => l_val == r_val,
+            (Self::Bool { val: l_val }, Self::Bool { val: r_val }) => l_val == r_val,
+            _ => core::mem::discriminant(self) == core::mem::discriminant(other),
+        }
+    }
+}
+
+impl ops::Sub for Literal {
+    type Output = Literal;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        let left = self.cast_f64().unwrap();
+        let right = rhs.cast_f64().unwrap();
+        Literal::Number { val: left - right }
+    }
 }
 
 impl ToString for Literal {
