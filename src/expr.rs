@@ -1,18 +1,15 @@
-use crate::token::{Literal, Token};
-
-#[derive(Debug)]
-pub struct RuntimeError {
-    pub token: Token,
-    pub message: String,
-}
-
-pub type AstResult<T> = Result<T, RuntimeError>;
+use crate::{
+    error::AstResult,
+    token::{Literal, Token},
+};
 
 pub trait ExprVisitor<T> {
-    fn visit_binary(&self, expr: &Expr) -> AstResult<T>;
-    fn visit_grouping(&self, expr: &Expr) -> AstResult<T>;
-    fn visit_literal(&self, expr: &Expr) -> AstResult<T>;
-    fn visit_unary(&self, expr: &Expr) -> AstResult<T>;
+    fn visit_binary(&mut self, expr: &Expr) -> AstResult<T>;
+    fn visit_grouping(&mut self, expr: &Expr) -> AstResult<T>;
+    fn visit_literal(&mut self, expr: &Expr) -> AstResult<T>;
+    fn visit_unary(&mut self, expr: &Expr) -> AstResult<T>;
+    fn visit_variable(&mut self, expr: &Expr) -> AstResult<T>;
+    fn visit_assignment(&mut self, expr: &Expr) -> AstResult<T>;
 }
 
 pub enum Expr {
@@ -31,10 +28,17 @@ pub enum Expr {
         operator: Token,
         right: Box<Expr>,
     },
+    Variable {
+        name: Token,
+    },
+    Assignment {
+        name: Token,
+        value: Box<Expr>,
+    },
 }
 
 impl Expr {
-    pub fn accept<T: ExprVisitor<U>, U>(&self, visitor: T) -> AstResult<U> {
+    pub fn accept<T: ExprVisitor<U>, U>(&self, visitor: &mut T) -> AstResult<U> {
         match self {
             Self::Binary {
                 left: _,
@@ -47,6 +51,8 @@ impl Expr {
                 operator: _,
                 right: _,
             } => visitor.visit_unary(&self),
+            Self::Variable { name: _ } => visitor.visit_variable(&self),
+            Expr::Assignment { name: _, value: _ } => visitor.visit_assignment(&self),
         }
     }
 }

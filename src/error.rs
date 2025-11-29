@@ -1,6 +1,13 @@
 use crate::token::Token;
 
 pub type LoxResult<T> = Result<T, LoxError>;
+#[derive(Debug)]
+pub struct RuntimeError {
+    pub token: Token,
+    pub message: String,
+}
+
+pub type AstResult<T> = Result<T, RuntimeError>;
 
 /// Error line class
 #[derive(Debug, Clone)]

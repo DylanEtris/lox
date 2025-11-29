@@ -1,8 +1,7 @@
 //! blah
 use crate::{
-    error::LoxError,
-    expr::RuntimeError,
-    interpreter::{Interpreter},
+    error::{LoxError, RuntimeError},
+    interpreter::Interpreter,
     parser::Parser,
     scanner::Scanner,
     token::{Token, TokenType},
@@ -77,8 +76,8 @@ impl Lox {
             }
         };
         let mut parser = Parser::new(tokens);
-        let expression = match parser.parse() {
-            Ok(expr) => expr.unwrap(),
+        let statements = match parser.parse() {
+            Ok(stmts) => stmts,
             Err(e) => {
                 for error in e {
                     self.report_parse_error(error.0, error.1);
@@ -86,7 +85,7 @@ impl Lox {
                 return;
             }
         };
-        let _ = match self.interpreter.interpret(expression) {
+        let _ = match self.interpreter.interpret(statements) {
             Ok(()) => (),
             Err(e) => self.runtime_error(e),
         };

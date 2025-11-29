@@ -1,19 +1,29 @@
 use crate::{
-    expr::{AstResult, Expr, ExprVisitor, RuntimeError},
+    environment::{Environment},
+    error::{AstResult, RuntimeError},
+    expr::{Expr, ExprVisitor},
+    stmt::{Stmt, StmtVisitor},
     token::{Literal, Token, TokenType},
 };
 
 #[derive(Default)]
-pub struct Interpreter {}
+pub struct Interpreter {
+    environment: Environment,
+}
 
 impl Interpreter {
-    pub fn interpret(&self, expr: Expr) -> AstResult<()> {
-        let value = self.evaluate(&expr)?;
-        println!("{}", value.to_string());
+    pub fn interpret(&mut self, stmts: Vec<Stmt>) -> AstResult<()> {
+        for stmt in stmts {
+            self.execute(&stmt)?;
+        }
         Ok(())
     }
 
-    fn evaluate(&self, expr: &Expr) -> AstResult<Literal> {
+    fn execute(&mut self, stmt: &Stmt) -> AstResult<()> {
+        stmt.accept(self)
+    }
+
+    fn evaluate(&mut self, expr: &Expr) -> AstResult<Literal> {
         expr.accept(self)
     }
 
@@ -65,10 +75,27 @@ impl Interpreter {
             }),
         }
     }
+
+    fn execute_block(
+        &mut self,
+        statements: &Vec<Box<Stmt>>,
+        environment: Environment,
+    ) -> AstResult<()> {
+        let previous = self.environment.clone();
+        self.environment = environment;
+
+        let mut result = Ok(());
+        for statement in statements {
+            result = self.execute(statement);
+        }
+
+        self.environment = previous;
+        result
+    }
 }
 
-impl ExprVisitor<Literal> for &Interpreter {
-    fn visit_binary(&self, expr: &Expr) -> AstResult<Literal> {
+impl ExprVisitor<Literal> for Interpreter {
+    fn visit_binary(&mut self, expr: &Expr) -> AstResult<Literal> {
         let Expr::Binary {
             left,
             operator,
@@ -125,21 +152,21 @@ impl ExprVisitor<Literal> for &Interpreter {
         }
     }
 
-    fn visit_grouping(&self, expr: &Expr) -> AstResult<Literal> {
+    fn visit_grouping(&mut self, expr: &Expr) -> AstResult<Literal> {
         let Expr::Grouping { expression } = expr else {
             panic!("Expected variant.")
         };
         self.evaluate(expression)
     }
 
-    fn visit_literal(&self, expr: &Expr) -> AstResult<Literal> {
+    fn visit_literal(&mut self, expr: &Expr) -> AstResult<Literal> {
         let Expr::Literal { value } = expr else {
             panic!("Expected variant.")
         };
         Ok(value.clone())
     }
 
-    fn visit_unary(&self, expr: &Expr) -> AstResult<Literal> {
+    fn visit_unary(&mut self, expr: &Expr) -> AstResult<Literal> {
         let Expr::Unary { operator, right } = expr else {
             panic!("Expected variant.")
         };
@@ -156,5 +183,62 @@ impl ExprVisitor<Literal> for &Interpreter {
                 return Ok(Literal::Nil);
             }
         }
+    }
+
+    fn visit_variable(&mut self, expr: &Expr) -> AstResult<Literal> {
+        let Expr::Variable { name } = expr else {
+            panic!("Expected variant.")
+        };
+        self.environment.get(name)
+    }
+
+    fn visit_assignment(&mut self, expr: &Expr) -> AstResult<Literal> {
+        let Expr::Assignment { name, value } = expr else {
+            panic!("Expected variant.")
+        };
+        let value = self.evaluate(value)?;
+        self.environment.assign(&name, &value)?;
+        Ok(value)
+    }
+}
+
+impl StmtVisitor for Interpreter {
+    fn visit_expression_stmt(&mut self, stmt: &Stmt) -> AstResult<()> {
+        let Stmt::Expression { expression } = stmt else {
+            panic!("Expected variant.")
+        };
+        self.evaluate(expression)?;
+        Ok(())
+    }
+
+    fn visit_print_stmt(&mut self, stmt: &Stmt) -> AstResult<()> {
+        let Stmt::Print { expression } = stmt else {
+            panic!("Expected variant.")
+        };
+        let value = self.evaluate(expression)?;
+        println!("{}", value.to_string());
+        Ok(())
+    }
+
+    fn visit_var_stmt(&mut self, stmt: &Stmt) -> AstResult<()> {
+        let Stmt::Var { name, expression } = stmt else {
+            panic!("Expected variant.")
+        };
+        let value = match expression {
+            Some(expr) => self.evaluate(expr)?,
+            None => Literal::Nil,
+        };
+        self.environment.define(name.lexeme.clone(), value);
+        Ok(())
+    }
+
+    fn visit_block_stmt(&mut self, stmt: &Stmt) -> AstResult<()> {
+        let Stmt::Block { statements } = stmt else {
+            panic!("Expected variant.")
+        };
+        self.execute_block(
+            statements,
+            Environment::new(Box::new(self.environment.clone())),
+        )
     }
 }
