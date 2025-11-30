@@ -92,7 +92,10 @@ impl Lox {
     }
 
     fn runtime_error(&mut self, error: RuntimeError) {
-        println!("{}\n[line {}]", error.message, error.token.line);
+        println!(
+            "{}\n[line {}], {:?}",
+            error.message, error.token.line, error
+        );
         self.had_runtime_error = true;
     }
 

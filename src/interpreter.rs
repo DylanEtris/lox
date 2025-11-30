@@ -1,14 +1,21 @@
 use crate::{
-    environment::{Environment},
+    environment::Environment,
     error::{AstResult, RuntimeError},
     expr::{Expr, ExprVisitor},
     stmt::{Stmt, StmtVisitor},
     token::{Literal, Token, TokenType},
 };
 
-#[derive(Default)]
 pub struct Interpreter {
-    environment: Environment,
+    environment: Option<Environment>,
+}
+
+impl Default for Interpreter {
+    fn default() -> Self {
+        Self {
+            environment: Some(Environment::default()),
+        }
+    }
 }
 
 impl Interpreter {
@@ -27,22 +34,23 @@ impl Interpreter {
         expr.accept(self)
     }
 
-    fn is_truthy(&self, value: &Literal) -> Literal {
+    fn is_truthy(&self, value: &Literal) -> bool {
         match value {
-            Literal::Nil => Literal::Bool { val: false },
-            Literal::Bool { val } => Literal::Bool { val: *val },
-            _ => Literal::Bool { val: true },
+            Literal::Nil => false,
+            Literal::Bool { val } => *val,
+            _ => true,
         }
     }
 
     fn check_number_operand(&self, operator: Token, value: &Literal) -> Result<(), RuntimeError> {
-        match value {
+        let val = match value {
             Literal::Number { val: _ } => Ok(()),
             _ => Err(RuntimeError {
                 token: operator,
                 message: "Operand must be a number.".to_string(),
             }),
-        }
+        };
+        return val;
     }
 
     fn check_number_operands(
@@ -54,8 +62,8 @@ impl Interpreter {
         match (left, right) {
             (Literal::Number { val: _ }, Literal::Number { val: _ }) => Ok(()),
             _ => Err(RuntimeError {
-                token: operator,
-                message: "Operand must be a number.".to_string(),
+                token: operator.clone(),
+                message: "Operand for '".to_string() + &operator.lexeme + "' must be a number.",
             }),
         }
     }
@@ -70,26 +78,26 @@ impl Interpreter {
             (Literal::Number { val: _ }, Literal::Number { val: _ }) => Ok(()),
             (Literal::String { val: _ }, Literal::String { val: _ }) => Ok(()),
             _ => Err(RuntimeError {
-                token: operator,
-                message: "Operand must be a number.".to_string(),
+                token: operator.clone(),
+                message: format!(
+                    "Operand for '{}' must be a number or a string.\nGot {:?} and {:?}.",
+                    operator.lexeme, left, right
+                ),
             }),
         }
     }
 
-    fn execute_block(
-        &mut self,
-        statements: &Vec<Box<Stmt>>,
-        environment: Environment,
-    ) -> AstResult<()> {
-        let previous = self.environment.clone();
-        self.environment = environment;
+    fn execute_block(&mut self, statements: &Vec<Box<Stmt>>) -> AstResult<()> {
+        let previous = self.environment.take().unwrap();
+        self.environment = Some(Environment::new(Box::new(previous)));
 
         let mut result = Ok(());
         for statement in statements {
             result = self.execute(statement);
         }
 
-        self.environment = previous;
+        let current = self.environment.take().unwrap();
+        self.environment = Some(*current.enclosing.unwrap());
         result
     }
 }
@@ -173,7 +181,9 @@ impl ExprVisitor<Literal> for Interpreter {
         let value = self.evaluate(right)?;
         match operator.token_type {
             TokenType::Bang => {
-                return Ok(self.is_truthy(&value));
+                return Ok(Literal::Bool {
+                    val: self.is_truthy(&value),
+                });
             }
             TokenType::Minus => {
                 self.check_number_operand(operator.clone(), &value)?;
@@ -189,7 +199,7 @@ impl ExprVisitor<Literal> for Interpreter {
         let Expr::Variable { name } = expr else {
             panic!("Expected variant.")
         };
-        self.environment.get(name)
+        self.environment.as_mut().unwrap().get(name)
     }
 
     fn visit_assignment(&mut self, expr: &Expr) -> AstResult<Literal> {
@@ -197,8 +207,36 @@ impl ExprVisitor<Literal> for Interpreter {
             panic!("Expected variant.")
         };
         let value = self.evaluate(value)?;
-        self.environment.assign(&name, &value)?;
+        self.environment.as_mut().unwrap().assign(&name, &value)?;
         Ok(value)
+    }
+
+    fn visit_logical(&mut self, left: &Expr, operator: &Token, right: &Expr) -> AstResult<Literal> {
+        match operator.token_type {
+            TokenType::And => {
+                let left = self.evaluate(left)?;
+                if !self.is_truthy(&left) {
+                    return Ok(left);
+                }
+            }
+            TokenType::Or => {
+                let left = self.evaluate(left)?;
+                if self.is_truthy(&left) {
+                    return Ok(left);
+                }
+            }
+            _ => panic!("Expected an 'and' or an 'or'"),
+        }
+        self.evaluate(&right)
+    }
+
+    fn visit_call(
+        &mut self,
+        name: &Token,
+        paren: &Token,
+        arguments: &Vec<Box<Expr>>,
+    ) -> AstResult<Literal> {
+        todo!()
     }
 }
 
@@ -228,7 +266,10 @@ impl StmtVisitor for Interpreter {
             Some(expr) => self.evaluate(expr)?,
             None => Literal::Nil,
         };
-        self.environment.define(name.lexeme.clone(), value);
+        self.environment
+            .as_mut()
+            .unwrap()
+            .define(name.lexeme.clone(), value);
         Ok(())
     }
 
@@ -236,9 +277,30 @@ impl StmtVisitor for Interpreter {
         let Stmt::Block { statements } = stmt else {
             panic!("Expected variant.")
         };
-        self.execute_block(
-            statements,
-            Environment::new(Box::new(self.environment.clone())),
-        )
+        self.execute_block(statements)
+    }
+
+    fn visit_if_stmt(
+        &mut self,
+        expression: &Expr,
+        if_stmt: &Stmt,
+        else_stmt: Option<&Stmt>,
+    ) -> AstResult<()> {
+        let condition = self.evaluate(expression)?;
+        if self.is_truthy(&condition) {
+            self.execute(if_stmt)?;
+        } else if let Some(else_stmt) = else_stmt {
+            self.execute(else_stmt)?;
+        }
+        Ok(())
+    }
+
+    fn visit_while(&mut self, condition: &Expr, statement: &Stmt) -> AstResult<()> {
+        let mut guard = self.evaluate(condition)?;
+        while self.is_truthy(&guard) {
+            self.execute(statement)?;
+            guard = self.evaluate(condition)?;
+        }
+        Ok(())
     }
 }
