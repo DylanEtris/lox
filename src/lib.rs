@@ -8,6 +8,8 @@ pub mod error;
 pub mod expr;
 pub mod interpreter;
 pub mod lox;
+pub mod lox_callable;
+pub mod lox_function;
 pub mod parser;
 pub mod scanner;
 pub mod stmt;

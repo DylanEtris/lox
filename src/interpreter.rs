@@ -1,19 +1,53 @@
+use std::{
+    cell::RefCell,
+    rc::Rc,
+    time::{self, SystemTime},
+};
+
 use crate::{
     environment::Environment,
     error::{AstResult, RuntimeError},
     expr::{Expr, ExprVisitor},
+    lox_callable::LoxCallable,
+    lox_function::LoxFunction,
     stmt::{Stmt, StmtVisitor},
     token::{Literal, Token, TokenType},
 };
 
 pub struct Interpreter {
-    environment: Option<Environment>,
+    pub globals: Rc<RefCell<Environment>>,
+    environment: Rc<RefCell<Environment>>,
 }
 
 impl Default for Interpreter {
     fn default() -> Self {
+        struct Clock {}
+
+        impl LoxCallable for Clock {
+            fn call(
+                &self,
+                _interpreter: &mut Interpreter,
+                _arguments: Vec<Literal>,
+            ) -> AstResult<Literal> {
+                let current_time = time::SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .unwrap();
+                return Ok(Literal::Number {
+                    val: current_time.as_secs_f64(),
+                });
+            }
+
+            fn arity(&self) -> usize {
+                return 0;
+            }
+        }
+        let globals = Rc::new(RefCell::new(Environment::default()));
+        globals
+            .borrow_mut()
+            .define("clock".into(), Literal::Callable(Rc::new(Clock {})));
         Self {
-            environment: Some(Environment::default()),
+            environment: Rc::clone(&globals),
+            globals: globals,
         }
     }
 }
@@ -45,7 +79,7 @@ impl Interpreter {
     fn check_number_operand(&self, operator: Token, value: &Literal) -> Result<(), RuntimeError> {
         let val = match value {
             Literal::Number { val: _ } => Ok(()),
-            _ => Err(RuntimeError {
+            _ => Err(RuntimeError::Exception {
                 token: operator,
                 message: "Operand must be a number.".to_string(),
             }),
@@ -61,7 +95,7 @@ impl Interpreter {
     ) -> Result<(), RuntimeError> {
         match (left, right) {
             (Literal::Number { val: _ }, Literal::Number { val: _ }) => Ok(()),
-            _ => Err(RuntimeError {
+            _ => Err(RuntimeError::Exception {
                 token: operator.clone(),
                 message: "Operand for '".to_string() + &operator.lexeme + "' must be a number.",
             }),
@@ -77,7 +111,7 @@ impl Interpreter {
         match (left, right) {
             (Literal::Number { val: _ }, Literal::Number { val: _ }) => Ok(()),
             (Literal::String { val: _ }, Literal::String { val: _ }) => Ok(()),
-            _ => Err(RuntimeError {
+            _ => Err(RuntimeError::Exception {
                 token: operator.clone(),
                 message: format!(
                     "Operand for '{}' must be a number or a string.\nGot {:?} and {:?}.",
@@ -87,17 +121,22 @@ impl Interpreter {
         }
     }
 
-    fn execute_block(&mut self, statements: &Vec<Box<Stmt>>) -> AstResult<()> {
-        let previous = self.environment.take().unwrap();
-        self.environment = Some(Environment::new(Box::new(previous)));
-
+    pub fn execute_block(
+        &mut self,
+        statements: &Vec<Stmt>,
+        environment: Environment,
+    ) -> AstResult<()> {
+        let previous = Rc::clone(&self.environment);
+        self.environment = Rc::new(RefCell::new(environment));
         let mut result = Ok(());
         for statement in statements {
             result = self.execute(statement);
+            if let Err(_) = result {
+                break;
+            }
         }
 
-        let current = self.environment.take().unwrap();
-        self.environment = Some(*current.enclosing.unwrap());
+        self.environment = previous;
         result
     }
 }
@@ -199,7 +238,7 @@ impl ExprVisitor<Literal> for Interpreter {
         let Expr::Variable { name } = expr else {
             panic!("Expected variant.")
         };
-        self.environment.as_mut().unwrap().get(name)
+        self.environment.borrow().get(name)
     }
 
     fn visit_assignment(&mut self, expr: &Expr) -> AstResult<Literal> {
@@ -207,7 +246,7 @@ impl ExprVisitor<Literal> for Interpreter {
             panic!("Expected variant.")
         };
         let value = self.evaluate(value)?;
-        self.environment.as_mut().unwrap().assign(&name, &value)?;
+        self.environment.borrow_mut().assign(&name, &value)?;
         Ok(value)
     }
 
@@ -232,11 +271,34 @@ impl ExprVisitor<Literal> for Interpreter {
 
     fn visit_call(
         &mut self,
-        name: &Token,
+        callee: &Expr,
         paren: &Token,
         arguments: &Vec<Box<Expr>>,
     ) -> AstResult<Literal> {
-        todo!()
+        let callee = self.evaluate(callee)?;
+        let arguments: Result<Vec<Literal>, _> =
+            arguments.iter().map(|arg| self.evaluate(arg)).collect();
+        let arguments = arguments?;
+        let function = match callee {
+            Literal::Callable(x) => x,
+            _ => {
+                return Err(RuntimeError::Exception {
+                    token: paren.clone(),
+                    message: "Can only call functions and classes.".into(),
+                });
+            }
+        };
+        if arguments.len() != function.arity() {
+            return Err(RuntimeError::Exception {
+                token: paren.clone(),
+                message: format!(
+                    "Expected {} arguments but got {}.",
+                    function.arity(),
+                    arguments.len()
+                ),
+            });
+        }
+        function.call(self, arguments)
     }
 }
 
@@ -267,8 +329,7 @@ impl StmtVisitor for Interpreter {
             None => Literal::Nil,
         };
         self.environment
-            .as_mut()
-            .unwrap()
+            .borrow_mut()
             .define(name.lexeme.clone(), value);
         Ok(())
     }
@@ -277,7 +338,8 @@ impl StmtVisitor for Interpreter {
         let Stmt::Block { statements } = stmt else {
             panic!("Expected variant.")
         };
-        self.execute_block(statements)
+        let environment = Environment::new(Rc::clone(&self.environment));
+        self.execute_block(statements, environment)
     }
 
     fn visit_if_stmt(
@@ -302,5 +364,31 @@ impl StmtVisitor for Interpreter {
             guard = self.evaluate(condition)?;
         }
         Ok(())
+    }
+
+    fn visit_function(
+        &mut self,
+        name: &Token,
+        params: &Vec<Token>,
+        body: &Vec<Stmt>,
+    ) -> AstResult<()> {
+        let value = LoxFunction {
+            name: name.clone(),
+            parameters: params.to_vec(),
+            body: body.to_vec(),
+            closure: Rc::clone(&self.environment),
+        };
+        self.environment
+            .borrow_mut()
+            .define(name.lexeme.clone(), Literal::Callable(Rc::new(value)));
+        Ok(())
+    }
+
+    fn visit_return(&mut self, _keyword: &Token, value: &Option<Expr>) -> AstResult<()> {
+        let return_val = match value {
+            Some(expr) => self.evaluate(expr)?,
+            None => Literal::Nil,
+        };
+        return Err(RuntimeError::Return(return_val));
     }
 }

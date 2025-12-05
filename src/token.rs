@@ -1,12 +1,31 @@
 //! The definition for the Lox tokens
-use std::{fmt::Display, ops};
+use std::{
+    fmt::{Debug, Display},
+    ops,
+    rc::Rc,
+};
 
-#[derive(Debug, Clone)]
+use crate::lox_callable::LoxCallable;
+
+#[derive(Clone)]
 pub enum Literal {
     String { val: String },
     Number { val: f64 },
     Bool { val: bool },
+    Callable(Rc<dyn LoxCallable>),
     Nil,
+}
+
+impl Debug for Literal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::String { val } => f.debug_struct("String").field("val", val).finish(),
+            Self::Number { val } => f.debug_struct("Number").field("val", val).finish(),
+            Self::Bool { val } => f.debug_struct("Bool").field("val", val).finish(),
+            Self::Callable(_) => panic!("Cannot debug a callable"),
+            Self::Nil => write!(f, "Nil"),
+        }
+    }
 }
 
 impl Literal {
@@ -111,6 +130,7 @@ impl ToString for Literal {
             Literal::Number { val } => val.to_string(),
             Literal::Bool { val } => val.to_string(),
             Literal::Nil => "nil".to_string(),
+            Literal::Callable(_) => "Callable".to_string(),
         }
     }
 }

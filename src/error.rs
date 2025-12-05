@@ -1,10 +1,10 @@
-use crate::token::Token;
+use crate::token::{Literal, Token};
 
 pub type LoxResult<T> = Result<T, LoxError>;
 #[derive(Debug)]
-pub struct RuntimeError {
-    pub token: Token,
-    pub message: String,
+pub enum RuntimeError {
+    Exception { token: Token, message: String },
+    Return(Literal),
 }
 
 pub type AstResult<T> = Result<T, RuntimeError>;

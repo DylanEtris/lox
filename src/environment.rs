@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use crate::{
     error::RuntimeError,
@@ -8,14 +8,14 @@ use crate::{
 #[derive(Default, Clone)]
 pub struct Environment {
     values: HashMap<String, Literal>,
-    pub enclosing: Option<Box<Environment>>,
+    pub enclosing: Option<Rc<RefCell<Environment>>>,
 }
 
 impl Environment {
-    pub fn new(environment: Box<Environment>) -> Environment {
+    pub fn new(enclosing: Rc<RefCell<Environment>>) -> Environment {
         Environment {
             values: HashMap::default(),
-            enclosing: Some(environment),
+            enclosing: Some(enclosing),
         }
     }
 
@@ -30,11 +30,11 @@ impl Environment {
             }
             None => {
                 if let Some(environment) = &self.enclosing {
-                    return environment.get(name);
+                    return environment.borrow().get(name);
                 }
             }
         }
-        return Err(RuntimeError {
+        return Err(RuntimeError::Exception {
             token: name.clone(),
             message: "Undefined variable: '".to_string() + &name.lexeme + "'.",
         });
@@ -46,9 +46,9 @@ impl Environment {
             return Ok(());
         }
         if let Some(environment) = self.enclosing.as_mut() {
-            return environment.assign(name, value);
+            return environment.borrow_mut().assign(name, value);
         }
-        return Err(RuntimeError {
+        return Err(RuntimeError::Exception {
             token: name.clone(),
             message: "Undefined variable '".to_string() + &name.lexeme + "'.",
         });

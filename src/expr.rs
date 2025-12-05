@@ -13,12 +13,13 @@ pub trait ExprVisitor<T> {
     fn visit_assignment(&mut self, expr: &Expr) -> AstResult<T>;
     fn visit_call(
         &mut self,
-        name: &Token,
+        callee: &Expr,
         paren: &Token,
         arguments: &Vec<Box<Expr>>,
     ) -> AstResult<T>;
 }
 
+#[derive(Clone)]
 pub enum Expr {
     Binary {
         left: Box<Expr>,
@@ -48,7 +49,7 @@ pub enum Expr {
         value: Box<Expr>,
     },
     Call {
-        name: Token,
+        callee: Box<Expr>,
         paren: Token,
         arguments: Vec<Box<Expr>>,
     },
@@ -76,10 +77,10 @@ impl Expr {
             Self::Variable { name: _ } => visitor.visit_variable(&self),
             Expr::Assignment { name: _, value: _ } => visitor.visit_assignment(&self),
             Expr::Call {
-                name,
+                callee,
                 paren,
                 arguments,
-            } => visitor.visit_call(name, paren, arguments),
+            } => visitor.visit_call(callee, paren, arguments),
         }
     }
 }

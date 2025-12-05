@@ -87,15 +87,13 @@ impl Lox {
         };
         let _ = match self.interpreter.interpret(statements) {
             Ok(()) => (),
-            Err(e) => self.runtime_error(e),
+            Err(RuntimeError::Exception { token, message }) => self.runtime_error(&token, &message),
+            Err(_) => panic!("No other variant expected."),
         };
     }
 
-    fn runtime_error(&mut self, error: RuntimeError) {
-        println!(
-            "{}\n[line {}], {:?}",
-            error.message, error.token.line, error
-        );
+    fn runtime_error(&mut self, token: &Token, message: &String) {
+        println!("{}\n[line {}]", message, token.line);
         self.had_runtime_error = true;
     }
 
