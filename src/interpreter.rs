@@ -1,5 +1,6 @@
 use std::{
     cell::RefCell,
+    collections::HashMap,
     rc::Rc,
     time::{self, SystemTime},
 };
@@ -16,6 +17,7 @@ use crate::{
 
 pub struct Interpreter {
     pub globals: Rc<RefCell<Environment>>,
+    locals: HashMap<Token, usize>,
     environment: Rc<RefCell<Environment>>,
 }
 
@@ -48,6 +50,7 @@ impl Default for Interpreter {
         Self {
             environment: Rc::clone(&globals),
             globals: globals,
+            locals: HashMap::default(),
         }
     }
 }
@@ -76,7 +79,7 @@ impl Interpreter {
         }
     }
 
-    fn check_number_operand(&self, operator: Token, value: &Literal) -> Result<(), RuntimeError> {
+    fn check_number_operand(&self, operator: Token, value: &Literal) -> AstResult<()> {
         let val = match value {
             Literal::Number { val: _ } => Ok(()),
             _ => Err(RuntimeError::Exception {
@@ -92,7 +95,7 @@ impl Interpreter {
         operator: Token,
         left: &Literal,
         right: &Literal,
-    ) -> Result<(), RuntimeError> {
+    ) -> AstResult<()> {
         match (left, right) {
             (Literal::Number { val: _ }, Literal::Number { val: _ }) => Ok(()),
             _ => Err(RuntimeError::Exception {
@@ -107,7 +110,7 @@ impl Interpreter {
         operator: Token,
         left: &Literal,
         right: &Literal,
-    ) -> Result<(), RuntimeError> {
+    ) -> AstResult<()> {
         match (left, right) {
             (Literal::Number { val: _ }, Literal::Number { val: _ }) => Ok(()),
             (Literal::String { val: _ }, Literal::String { val: _ }) => Ok(()),
@@ -138,6 +141,17 @@ impl Interpreter {
 
         self.environment = previous;
         result
+    }
+
+    pub(crate) fn resolve(&mut self, name: &Token, depth: usize) {
+        self.locals.insert(name.clone(), depth);
+    }
+
+    fn look_up_variable(&self, name: &Token) -> Result<Literal, RuntimeError> {
+        match self.locals.get(name) {
+            Some(distance) => self.environment.borrow().get_at(*distance, &name),
+            None => self.globals.borrow().get(name),
+        }
     }
 }
 
@@ -238,7 +252,7 @@ impl ExprVisitor<Literal> for Interpreter {
         let Expr::Variable { name } = expr else {
             panic!("Expected variant.")
         };
-        self.environment.borrow().get(name)
+        self.look_up_variable(name)
     }
 
     fn visit_assignment(&mut self, expr: &Expr) -> AstResult<Literal> {
@@ -246,7 +260,13 @@ impl ExprVisitor<Literal> for Interpreter {
             panic!("Expected variant.")
         };
         let value = self.evaluate(value)?;
-        self.environment.borrow_mut().assign(&name, &value)?;
+        match self.locals.get(name) {
+            Some(distance) => self
+                .environment
+                .borrow_mut()
+                .assign_at(*distance, name, &value)?,
+            None => self.globals.borrow_mut().assign(name, &value)?,
+        };
         Ok(value)
     }
 

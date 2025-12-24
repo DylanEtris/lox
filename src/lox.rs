@@ -3,13 +3,16 @@ use crate::{
     error::{LoxError, RuntimeError},
     interpreter::Interpreter,
     parser::Parser,
+    resolver::Resolver,
     scanner::Scanner,
     token::{Token, TokenType},
 };
 use std::{
+    cell::RefCell,
     fs::File,
     io::{Error, Read, Write, stderr, stdin, stdout},
     process::exit,
+    rc::Rc,
 };
 
 /// Main struct for the Lox compiler
@@ -17,7 +20,7 @@ use std::{
 pub struct Lox {
     had_error: bool,
     had_runtime_error: bool,
-    interpreter: Interpreter,
+    interpreter: Rc<RefCell<Interpreter>>,
 }
 
 impl Lox {
@@ -85,7 +88,19 @@ impl Lox {
                 return;
             }
         };
-        let _ = match self.interpreter.interpret(statements) {
+
+        let mut resolver = Resolver::new(Rc::clone(&self.interpreter));
+        match resolver.resolve(&statements) {
+            Ok(()) => (),
+            Err(RuntimeError::Exception { token, message }) => {
+                self.runtime_error(&token, &message);
+                return;
+            }
+            Err(_) => panic!("No other variant expected."),
+        };
+
+        let result = self.interpreter.borrow_mut().interpret(statements);
+        match result {
             Ok(()) => (),
             Err(RuntimeError::Exception { token, message }) => self.runtime_error(&token, &message),
             Err(_) => panic!("No other variant expected."),

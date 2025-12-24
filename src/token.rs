@@ -1,6 +1,7 @@
 //! The definition for the Lox tokens
 use std::{
     fmt::{Debug, Display},
+    hash::Hash,
     ops,
     rc::Rc,
 };
@@ -186,6 +187,10 @@ pub enum TokenType {
     Eof,
 }
 
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static NEXT_ID: AtomicU64 = AtomicU64::new(0);
+
 /// Lox token
 #[derive(Clone, Debug)]
 pub struct Token {
@@ -193,6 +198,7 @@ pub struct Token {
     pub lexeme: String,
     pub literal: Option<Literal>,
     pub line: usize,
+    id: u64,
 }
 
 impl Token {
@@ -207,9 +213,24 @@ impl Token {
             lexeme,
             literal,
             line,
+            id: NEXT_ID.fetch_add(1, Ordering::Relaxed),
         }
     }
 }
+
+impl Hash for Token {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+    }
+}
+
+impl PartialEq for Token {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
+impl Eq for Token {}
 
 impl Display for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

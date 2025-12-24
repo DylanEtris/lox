@@ -2,6 +2,7 @@ use crate::token::{Literal, Token};
 
 pub type LoxResult<T> = Result<T, LoxError>;
 #[derive(Debug)]
+#[must_use = "errors should be handled"]
 pub enum RuntimeError {
     Exception { token: Token, message: String },
     Return(Literal),

@@ -1,5 +1,4 @@
 use crate::{
-    error::AstResult,
     expr::Expr,
     stmt::Stmt,
     token::{Literal, Token, TokenType},
@@ -59,12 +58,12 @@ impl Parser {
                 parameters.push(parameter);
             }
         }
-        self.consume(TokenType::RightParen, "Expect ')' after parameters.");
+        self.consume(TokenType::RightParen, "Expect ')' after parameters.")?;
 
         self.consume(
             TokenType::LeftBrace,
             &format!("Expect '{{' before {} body.", kind),
-        );
+        )?;
         let body = self.block()?;
         return Ok(Stmt::Function {
             name: name,
@@ -504,26 +503,26 @@ impl Parser {
         self.peek().token_type == TokenType::Eof
     }
 
-    fn synchronize(&mut self) {
-        self.advance();
+    //fn synchronize(&mut self) {
+    //    self.advance();
 
-        while !self.is_at_end() {
-            if self.previous().token_type == TokenType::Semicolon {
-                return;
-            }
+    //    while !self.is_at_end() {
+    //        if self.previous().token_type == TokenType::Semicolon {
+    //            return;
+    //        }
 
-            match self.peek().token_type {
-                TokenType::Class
-                | TokenType::Fun
-                | TokenType::Var
-                | TokenType::For
-                | TokenType::If
-                | TokenType::While
-                | TokenType::Print
-                | TokenType::Return => return,
-                _ => {}
-            }
-            self.advance();
-        }
-    }
+    //        match self.peek().token_type {
+    //            TokenType::Class
+    //            | TokenType::Fun
+    //            | TokenType::Var
+    //            | TokenType::For
+    //            | TokenType::If
+    //            | TokenType::While
+    //            | TokenType::Print
+    //            | TokenType::Return => return,
+    //            _ => {}
+    //        }
+    //        self.advance();
+    //    }
+    //}
 }
