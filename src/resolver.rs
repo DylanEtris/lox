@@ -12,12 +12,21 @@ use crate::{
 enum FunctionType {
     None,
     Function,
+    Initializer,
+    Method,
+}
+
+#[derive(Clone)]
+enum ClassType {
+    None,
+    Class,
 }
 
 pub struct Resolver {
     interpreter: Rc<RefCell<Interpreter>>,
     scopes: Vec<HashMap<String, bool>>,
     current_function: FunctionType,
+    enclosing_class: ClassType,
 }
 
 impl Resolver {
@@ -26,6 +35,7 @@ impl Resolver {
             interpreter,
             scopes: Vec::default(),
             current_function: FunctionType::None,
+            enclosing_class: ClassType::None,
         }
     }
 
@@ -57,10 +67,10 @@ impl Resolver {
             return Ok(());
         }
         if self.scopes.last_mut().unwrap().contains_key(&name.lexeme) {
-            return Err(RuntimeError::Exception {
-                token: name.clone(),
-                message: "Already a variable with this name in scope.".into(),
-            });
+            return Err(RuntimeError::from_token(
+                name.clone(),
+                "Already a variable with this name in scope.".into(),
+            ));
         }
 
         self.scopes
@@ -82,7 +92,7 @@ impl Resolver {
     }
 
     fn resolve_local(&mut self, name: &Token) {
-        for (idx, scope) in self.scopes.iter().enumerate().rev() {
+        for (idx, scope) in self.scopes.iter().rev().enumerate() {
             if scope.contains_key(&name.lexeme) {
                 self.interpreter.borrow_mut().resolve(name, idx);
             }
@@ -190,14 +200,49 @@ impl StmtVisitor for Resolver {
         value: &Option<crate::expr::Expr>,
     ) -> AstResult<()> {
         if let FunctionType::None = self.current_function {
-            return Err(RuntimeError::Exception {
-                token: keyword.clone(),
-                message: "Cannot return from the top level.".into(),
-            });
+            return Err(RuntimeError::from_token(
+                keyword.clone(),
+                "Cannot return from the top level.".into(),
+            ));
         }
         if let Some(value) = value {
+            if let FunctionType::Initializer = self.current_function {
+                return Err(RuntimeError::from_token(
+                    keyword.clone(),
+                    "Can't return value from initializer.".into(),
+                ));
+            }
             self.resolve_expr(value)?;
         }
+        Ok(())
+    }
+
+    fn visit_class(&mut self, name: &Token, _methods: &Vec<Stmt>) -> AstResult<()> {
+        self.enclosing_class = ClassType::Class;
+        self.begin_scope();
+
+        self.declare(name)?;
+        self.define(name);
+        let class_type = self.enclosing_class.clone();
+        self.scopes.last_mut().unwrap().insert("this".into(), true);
+        for method in _methods {
+            let Stmt::Function {
+                name,
+                parameters,
+                body,
+            } = method
+            else {
+                panic!("Expected function.")
+            };
+            let declaration = if name.lexeme == "init" {
+                FunctionType::Initializer
+            } else {
+                FunctionType::Method
+            };
+            self.resolve_function(parameters, body, declaration)?
+        }
+        self.end_scope();
+        self.enclosing_class = class_type;
         Ok(())
     }
 }
@@ -253,10 +298,10 @@ impl ExprVisitor<()> for Resolver {
         };
         if let Some(last) = self.scopes.last() {
             if last.get(&name.lexeme) == Some(&false) {
-                return Err(RuntimeError::Exception {
-                    token: name.clone(),
-                    message: "Can't read local variable in it's own initializer".into(),
-                });
+                return Err(RuntimeError::from_token(
+                    name.clone(),
+                    "Can't read local variable in it's own initializer".into(),
+                ));
             }
         }
         self.resolve_local(name);
@@ -282,6 +327,28 @@ impl ExprVisitor<()> for Resolver {
         for argument in arguments {
             self.resolve_expr(argument)?;
         }
+        Ok(())
+    }
+
+    fn visit_get_expr(&mut self, object: &Expr, _name: &Token) -> AstResult<()> {
+        self.resolve_expr(object)?;
+        Ok(())
+    }
+
+    fn visit_set_expr(&mut self, object: &Expr, _name: &Token, value: &Expr) -> AstResult<()> {
+        self.resolve_expr(object)?;
+        self.resolve_expr(value)?;
+        Ok(())
+    }
+
+    fn visit_this_expr(&mut self, keyword: &Token) -> AstResult<()> {
+        if let ClassType::None = self.enclosing_class {
+            return Err(RuntimeError::from_token(
+                keyword.clone(),
+                "Cannot use 'this' outside of a class.".into(),
+            ));
+        }
+        self.resolve_local(keyword);
         Ok(())
     }
 }

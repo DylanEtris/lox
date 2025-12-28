@@ -1,12 +1,13 @@
 //! The definition for the Lox tokens
 use std::{
+    cell::RefCell,
     fmt::{Debug, Display},
     hash::Hash,
     ops,
     rc::Rc,
 };
 
-use crate::lox_callable::LoxCallable;
+use crate::{lox_callable::LoxCallable, lox_class::LoxClass, lox_instance::LoxInstance};
 
 #[derive(Clone)]
 pub enum Literal {
@@ -15,6 +16,8 @@ pub enum Literal {
     Bool { val: bool },
     Callable(Rc<dyn LoxCallable>),
     Nil,
+    Class(LoxClass),
+    Instance(Rc<RefCell<LoxInstance>>),
 }
 
 impl Debug for Literal {
@@ -25,6 +28,8 @@ impl Debug for Literal {
             Self::Bool { val } => f.debug_struct("Bool").field("val", val).finish(),
             Self::Callable(_) => panic!("Cannot debug a callable"),
             Self::Nil => write!(f, "Nil"),
+            Self::Class(arg0) => f.debug_tuple("Class").field(arg0).finish(),
+            Self::Instance(arg0) => f.debug_tuple("Instance").field(arg0).finish(),
         }
     }
 }
@@ -132,6 +137,8 @@ impl ToString for Literal {
             Literal::Bool { val } => val.to_string(),
             Literal::Nil => "nil".to_string(),
             Literal::Callable(_) => "Callable".to_string(),
+            Literal::Class(lox_class) => lox_class.to_string(),
+            Literal::Instance(instance) => instance.borrow().to_string(),
         }
     }
 }

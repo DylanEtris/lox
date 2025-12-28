@@ -11,6 +11,9 @@ pub trait ExprVisitor<T> {
     fn visit_unary(&mut self, expr: &Expr) -> AstResult<T>;
     fn visit_variable(&mut self, expr: &Expr) -> AstResult<T>;
     fn visit_assignment(&mut self, expr: &Expr) -> AstResult<T>;
+    fn visit_get_expr(&mut self, object: &Expr, name: &Token) -> AstResult<T>;
+    fn visit_this_expr(&mut self, keyword: &Token) -> AstResult<T>;
+    fn visit_set_expr(&mut self, object: &Expr, name: &Token, value: &Expr) -> AstResult<T>;
     fn visit_call(
         &mut self,
         callee: &Expr,
@@ -37,6 +40,9 @@ pub enum Expr {
     Literal {
         value: Literal,
     },
+    This {
+        keyword: Token,
+    },
     Unary {
         operator: Token,
         right: Box<Expr>,
@@ -52,6 +58,15 @@ pub enum Expr {
         callee: Box<Expr>,
         paren: Token,
         arguments: Vec<Box<Expr>>,
+    },
+    Get {
+        object: Box<Expr>,
+        name: Token,
+    },
+    Set {
+        object: Box<Expr>,
+        name: Token,
+        value: Box<Expr>,
     },
 }
 
@@ -81,6 +96,13 @@ impl Expr {
                 paren,
                 arguments,
             } => visitor.visit_call(callee, paren, arguments),
+            Expr::Get { object, name } => visitor.visit_get_expr(object, name),
+            Expr::Set {
+                object,
+                name,
+                value,
+            } => visitor.visit_set_expr(object, name, value),
+            Expr::This { keyword } => visitor.visit_this_expr(keyword),
         }
     }
 }

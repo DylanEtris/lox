@@ -23,8 +23,8 @@ impl Environment {
         self.values.insert(name, value);
     }
 
-    pub fn get(&self, name: &Token) -> Result<Literal, RuntimeError> {
-        match self.values.get(&name.lexeme) {
+    pub fn get(&self, name: &str) -> Result<Literal, RuntimeError> {
+        match self.values.get(name) {
             Some(literal) => {
                 return Ok(literal.clone());
             }
@@ -34,21 +34,18 @@ impl Environment {
                 }
             }
         }
-        return Err(RuntimeError::Exception {
-            token: name.clone(),
-            message: "Undefined variable: '".to_string() + &name.lexeme + "'.",
-        });
+        return Err(RuntimeError::Exception(format!(
+            "Undefined variable: '{}'.",
+            name
+        )));
     }
 
-    pub fn get_at(&self, distance: usize, name: &Token) -> Result<Literal, RuntimeError> {
+    pub fn get_at(&self, distance: usize, name: &str) -> Result<Literal, RuntimeError> {
         if distance == 0 {
             self.get(name)
         } else {
             let Some(enclosing) = self.enclosing.as_ref() else {
-                return Err(RuntimeError::Exception {
-                    token: name.clone(),
-                    message: "Variable does not exist.".into(),
-                });
+                return Err(RuntimeError::Exception("Variable does not exist.".into()));
             };
             return enclosing.borrow().get_at(distance - 1, name);
         }
@@ -62,10 +59,10 @@ impl Environment {
         if let Some(environment) = self.enclosing.as_mut() {
             return environment.borrow_mut().assign(name, value);
         }
-        return Err(RuntimeError::Exception {
-            token: name.clone(),
-            message: "Undefined variable '".to_string() + &name.lexeme + "'.",
-        });
+        return Err(RuntimeError::from_token(
+            name.clone(),
+            format!("Undefined variable '{}'.", &name.lexeme),
+        ));
     }
 
     pub fn assign_at(
@@ -78,10 +75,10 @@ impl Environment {
             self.assign(name, value)
         } else {
             let Some(enclosing) = self.enclosing.as_ref() else {
-                return Err(RuntimeError::Exception {
-                    token: name.clone(),
-                    message: "Variable does not exist.".into(),
-                });
+                return Err(RuntimeError::from_token(
+                    name.clone(),
+                    "Variable does not exist.".into(),
+                ));
             };
             return enclosing.borrow_mut().assign_at(distance - 1, name, value);
         }

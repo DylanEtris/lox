@@ -92,8 +92,8 @@ impl Lox {
         let mut resolver = Resolver::new(Rc::clone(&self.interpreter));
         match resolver.resolve(&statements) {
             Ok(()) => (),
-            Err(RuntimeError::Exception { token, message }) => {
-                self.runtime_error(&token, &message);
+            Err(RuntimeError::Exception(msg)) => {
+                self.runtime_error(&msg);
                 return;
             }
             Err(_) => panic!("No other variant expected."),
@@ -102,13 +102,13 @@ impl Lox {
         let result = self.interpreter.borrow_mut().interpret(statements);
         match result {
             Ok(()) => (),
-            Err(RuntimeError::Exception { token, message }) => self.runtime_error(&token, &message),
+            Err(RuntimeError::Exception(msg)) => self.runtime_error(&msg),
             Err(_) => panic!("No other variant expected."),
         };
     }
 
-    fn runtime_error(&mut self, token: &Token, message: &String) {
-        println!("{}\n[line {}]", message, token.line);
+    fn runtime_error(&mut self, msg: &str) {
+        println!("{}", msg);
         self.had_runtime_error = true;
     }
 

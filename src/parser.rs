@@ -34,6 +34,9 @@ impl Parser {
     }
 
     fn declaration(&mut self) -> Result<Stmt, ()> {
+        if self.match_token(&[TokenType::Class]) {
+            return self.class_declaration();
+        }
         if self.match_token(&[TokenType::Var]) {
             return self.var_declaration();
         }
@@ -256,6 +259,13 @@ impl Parser {
                         value: Box::new(value),
                     });
                 }
+                Expr::Get { object, name } => {
+                    return Ok(Expr::Set {
+                        object: object,
+                        name: name,
+                        value: Box::new(value),
+                    });
+                }
                 _ => {
                     self.errors
                         .push((equals, "Invalid assignment target.".to_string()));
@@ -386,6 +396,13 @@ impl Parser {
         loop {
             if self.match_token(&[TokenType::LeftParen]) {
                 expr = self.finish_call(expr)?;
+            } else if self.match_token(&[TokenType::Dot]) {
+                let name =
+                    self.consume(TokenType::Identifier, "Expect property name after '.'.")?;
+                expr = Expr::Get {
+                    object: Box::new(expr),
+                    name: name,
+                }
             } else {
                 break;
             }
@@ -442,6 +459,11 @@ impl Parser {
         if self.match_token(&[TokenType::Identifier]) {
             return Ok(Expr::Variable {
                 name: self.previous(),
+            });
+        }
+        if self.match_token(&[TokenType::This]) {
+            return Ok(Expr::This {
+                keyword: self.previous(),
             });
         }
 
@@ -501,6 +523,20 @@ impl Parser {
 
     fn is_at_end(&self) -> bool {
         self.peek().token_type == TokenType::Eof
+    }
+
+    fn class_declaration(&mut self) -> Result<Stmt, ()> {
+        let name = self.consume(TokenType::Identifier, "Expect class name.")?;
+        self.consume(TokenType::LeftBrace, "Expect '{' before a class body.")?;
+        let mut methods = Vec::new();
+        while !self.check(&TokenType::RightBrace) && !self.is_at_end() {
+            methods.push(self.function("method".into())?)
+        }
+        self.consume(TokenType::RightBrace, "Expect '}' after a class body.")?;
+        Ok(Stmt::Class {
+            name: name,
+            methods: methods,
+        })
     }
 
     //fn synchronize(&mut self) {

@@ -19,6 +19,7 @@ pub trait StmtVisitor {
         body: &Vec<Stmt>,
     ) -> AstResult<()>;
     fn visit_return(&mut self, keyword: &Token, value: &Option<Expr>) -> AstResult<()>;
+    fn visit_class(&mut self, name: &Token, methods: &Vec<Stmt>) -> AstResult<()>;
 }
 
 #[derive(Clone)]
@@ -40,6 +41,10 @@ pub enum Stmt {
     },
     Block {
         statements: Vec<Stmt>,
+    },
+    Class {
+        name: Token,
+        methods: Vec<Stmt>,
     },
     If {
         condition: Expr,
@@ -81,6 +86,7 @@ impl Stmt {
                 body,
             } => visitor.visit_function(name, parameters, body),
             Self::Return { keyword, value } => visitor.visit_return(keyword, value),
+            Self::Class { name, methods } => visitor.visit_class(name, methods),
         }
     }
 }

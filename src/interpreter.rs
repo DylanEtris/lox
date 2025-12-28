@@ -10,7 +10,9 @@ use crate::{
     error::{AstResult, RuntimeError},
     expr::{Expr, ExprVisitor},
     lox_callable::LoxCallable,
+    lox_class::LoxClass,
     lox_function::LoxFunction,
+    lox_instance::instance_get,
     stmt::{Stmt, StmtVisitor},
     token::{Literal, Token, TokenType},
 };
@@ -82,10 +84,10 @@ impl Interpreter {
     fn check_number_operand(&self, operator: Token, value: &Literal) -> AstResult<()> {
         let val = match value {
             Literal::Number { val: _ } => Ok(()),
-            _ => Err(RuntimeError::Exception {
-                token: operator,
-                message: "Operand must be a number.".to_string(),
-            }),
+            _ => Err(RuntimeError::from_token(
+                operator,
+                "Operand must be a number.".to_string(),
+            )),
         };
         return val;
     }
@@ -98,10 +100,10 @@ impl Interpreter {
     ) -> AstResult<()> {
         match (left, right) {
             (Literal::Number { val: _ }, Literal::Number { val: _ }) => Ok(()),
-            _ => Err(RuntimeError::Exception {
-                token: operator.clone(),
-                message: "Operand for '".to_string() + &operator.lexeme + "' must be a number.",
-            }),
+            _ => Err(RuntimeError::from_token(
+                operator.clone(),
+                format!("Operand for '{}' must be a number.", &operator.lexeme),
+            )),
         }
     }
 
@@ -114,13 +116,13 @@ impl Interpreter {
         match (left, right) {
             (Literal::Number { val: _ }, Literal::Number { val: _ }) => Ok(()),
             (Literal::String { val: _ }, Literal::String { val: _ }) => Ok(()),
-            _ => Err(RuntimeError::Exception {
-                token: operator.clone(),
-                message: format!(
+            _ => Err(RuntimeError::from_token(
+                operator.clone(),
+                format!(
                     "Operand for '{}' must be a number or a string.\nGot {:?} and {:?}.",
                     operator.lexeme, left, right
                 ),
-            }),
+            )),
         }
     }
 
@@ -149,8 +151,8 @@ impl Interpreter {
 
     fn look_up_variable(&self, name: &Token) -> Result<Literal, RuntimeError> {
         match self.locals.get(name) {
-            Some(distance) => self.environment.borrow().get_at(*distance, &name),
-            None => self.globals.borrow().get(name),
+            Some(distance) => self.environment.borrow().get_at(*distance, &name.lexeme),
+            None => self.globals.borrow().get(&name.lexeme),
         }
     }
 }
@@ -301,24 +303,53 @@ impl ExprVisitor<Literal> for Interpreter {
         let arguments = arguments?;
         let function = match callee {
             Literal::Callable(x) => x,
+            Literal::Class(klass) => Rc::new(klass),
             _ => {
-                return Err(RuntimeError::Exception {
-                    token: paren.clone(),
-                    message: "Can only call functions and classes.".into(),
-                });
+                return Err(RuntimeError::from_token(
+                    paren.clone(),
+                    "Can only call functions and classes.".into(),
+                ));
             }
         };
         if arguments.len() != function.arity() {
-            return Err(RuntimeError::Exception {
-                token: paren.clone(),
-                message: format!(
+            return Err(RuntimeError::from_token(
+                paren.clone(),
+                format!(
                     "Expected {} arguments but got {}.",
                     function.arity(),
                     arguments.len()
                 ),
-            });
+            ));
         }
         function.call(self, arguments)
+    }
+
+    fn visit_get_expr(&mut self, object: &Expr, name: &Token) -> AstResult<Literal> {
+        match self.evaluate(object)? {
+            Literal::Instance(object) => instance_get(&object, name),
+            _ => Err(RuntimeError::from_token(
+                name.clone(),
+                "Only instances have properties.".into(),
+            )),
+        }
+    }
+
+    fn visit_set_expr(&mut self, object: &Expr, name: &Token, value: &Expr) -> AstResult<Literal> {
+        match self.evaluate(object)? {
+            Literal::Instance(instance) => {
+                let value = self.evaluate(value)?;
+                instance.borrow_mut().set(name, value.clone())?;
+                Ok(value)
+            }
+            _ => Err(RuntimeError::from_token(
+                name.clone(),
+                "Only instances have fields.".into(),
+            )),
+        }
+    }
+
+    fn visit_this_expr(&mut self, keyword: &Token) -> AstResult<Literal> {
+        self.look_up_variable(keyword)
     }
 }
 
@@ -397,6 +428,7 @@ impl StmtVisitor for Interpreter {
             parameters: params.to_vec(),
             body: body.to_vec(),
             closure: Rc::clone(&self.environment),
+            is_initializer: false,
         };
         self.environment
             .borrow_mut()
@@ -410,5 +442,35 @@ impl StmtVisitor for Interpreter {
             None => Literal::Nil,
         };
         return Err(RuntimeError::Return(return_val));
+    }
+
+    fn visit_class(&mut self, name: &Token, methods: &Vec<Stmt>) -> AstResult<()> {
+        self.environment
+            .borrow_mut()
+            .define(name.lexeme.clone(), Literal::Nil);
+        let mut function_methods = HashMap::new();
+        for method in methods {
+            let Stmt::Function {
+                name,
+                parameters,
+                body,
+            } = method
+            else {
+                panic!("Expected function statement.")
+            };
+            function_methods.insert(
+                name.lexeme.clone(),
+                Rc::new(LoxFunction {
+                    name: name.clone(),
+                    parameters: parameters.to_vec(),
+                    body: body.to_vec(),
+                    closure: Rc::clone(&self.environment),
+                    is_initializer: name.lexeme == "init",
+                }),
+            );
+        }
+        let klass = Literal::Class(LoxClass::new(name.lexeme.clone(), function_methods));
+        self.environment.borrow_mut().assign(name, &klass)?;
+        Ok(())
     }
 }
