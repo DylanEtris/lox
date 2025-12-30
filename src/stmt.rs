@@ -27,7 +27,7 @@ pub trait StmtVisitor {
     ) -> AstResult<()>;
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Stmt {
     Expression {
         expression: Expr,

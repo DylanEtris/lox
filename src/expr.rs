@@ -23,7 +23,7 @@ pub trait ExprVisitor<T> {
     ) -> AstResult<T>;
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Expr {
     Binary {
         left: Box<Expr>,

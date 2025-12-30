@@ -482,6 +482,7 @@ impl Parser {
         }
         self.errors
             .push((self.peek(), "Expected expression.".to_string()));
+        self.advance();
         Err(())
     }
 
