@@ -16,7 +16,7 @@ pub enum Literal {
     Bool { val: bool },
     Callable(Rc<dyn LoxCallable>),
     Nil,
-    Class(LoxClass),
+    Class(Rc<LoxClass>),
     Instance(Rc<RefCell<LoxInstance>>),
 }
 

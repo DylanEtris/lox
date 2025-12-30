@@ -13,6 +13,7 @@ pub trait ExprVisitor<T> {
     fn visit_assignment(&mut self, expr: &Expr) -> AstResult<T>;
     fn visit_get_expr(&mut self, object: &Expr, name: &Token) -> AstResult<T>;
     fn visit_this_expr(&mut self, keyword: &Token) -> AstResult<T>;
+    fn visit_super_expr(&mut self, keyword: &Token, method: &Token) -> AstResult<T>;
     fn visit_set_expr(&mut self, object: &Expr, name: &Token, value: &Expr) -> AstResult<T>;
     fn visit_call(
         &mut self,
@@ -42,6 +43,10 @@ pub enum Expr {
     },
     This {
         keyword: Token,
+    },
+    Super {
+        keyword: Token,
+        method: Token,
     },
     Unary {
         operator: Token,
@@ -103,6 +108,7 @@ impl Expr {
                 value,
             } => visitor.visit_set_expr(object, name, value),
             Expr::This { keyword } => visitor.visit_this_expr(keyword),
+            Expr::Super { keyword, method } => visitor.visit_super_expr(keyword, method),
         }
     }
 }

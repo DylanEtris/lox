@@ -6,17 +6,30 @@ use crate::{lox_callable::LoxCallable, lox_function::LoxFunction, lox_instance::
 pub struct LoxClass {
     pub name: String,
     methods: HashMap<String, Rc<LoxFunction>>,
+    superclass: Option<Rc<LoxClass>>,
 }
 
 impl LoxClass {
     pub fn new(name: String, methods: HashMap<String, Rc<LoxFunction>>) -> LoxClass {
-        LoxClass { name, methods }
+        LoxClass {
+            name,
+            methods,
+            superclass: None,
+        }
+    }
+
+    pub fn superclass(mut self, superclass: Option<Rc<LoxClass>>) -> LoxClass {
+        self.superclass = superclass;
+        self
     }
 
     pub(crate) fn find_method(&self, lexeme: &str) -> Option<Rc<LoxFunction>> {
         if self.methods.contains_key(lexeme) {
             let function = Rc::clone(self.methods.get(lexeme)?);
             return Some(function);
+        }
+        if let Some(superclass) = &self.superclass {
+            return superclass.find_method(lexeme);
         }
         None
     }

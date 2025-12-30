@@ -303,7 +303,7 @@ impl ExprVisitor<Literal> for Interpreter {
         let arguments = arguments?;
         let function = match callee {
             Literal::Callable(x) => x,
-            Literal::Class(klass) => Rc::new(klass),
+            Literal::Class(klass) => klass,
             _ => {
                 return Err(RuntimeError::from_token(
                     paren.clone(),
@@ -350,6 +350,31 @@ impl ExprVisitor<Literal> for Interpreter {
 
     fn visit_this_expr(&mut self, keyword: &Token) -> AstResult<Literal> {
         self.look_up_variable(keyword)
+    }
+
+    fn visit_super_expr(&mut self, keyword: &Token, method: &Token) -> AstResult<Literal> {
+        let distance = self.locals.get(keyword).unwrap();
+        let superclass = self.environment.borrow_mut().get_at(*distance, "super")?;
+        let Literal::Class(superclass) = superclass else {
+            panic!("Expected variant.")
+        };
+        let object = self
+            .environment
+            .borrow_mut()
+            .get_at(*distance - 1, "this")?;
+        let Literal::Instance(object) = object else {
+            panic!("Expected variant.")
+        };
+        let method = match superclass.find_method(&method.lexeme) {
+            Some(method) => method,
+            None => {
+                return Err(RuntimeError::from_token(
+                    method.clone(),
+                    format!("Undefined property '{}'.", method.lexeme),
+                ));
+            }
+        };
+        Ok(Literal::Callable(Rc::new(method.bind(Rc::clone(&object)))))
     }
 }
 
@@ -444,10 +469,37 @@ impl StmtVisitor for Interpreter {
         return Err(RuntimeError::Return(return_val));
     }
 
-    fn visit_class(&mut self, name: &Token, methods: &Vec<Stmt>) -> AstResult<()> {
+    fn visit_class(
+        &mut self,
+        name: &Token,
+        methods: &Vec<Stmt>,
+        superclass_name: &Option<Token>,
+    ) -> AstResult<()> {
+        let mut superclass = None;
+        if let Some(superclass_name) = superclass_name {
+            let val = self.evaluate(&Expr::Variable {
+                name: superclass_name.clone(),
+            })?;
+            let Literal::Class(val) = val else {
+                return Err(RuntimeError::from_token(
+                    superclass_name.clone(),
+                    "Superclass must be a class.".into(),
+                ));
+            };
+            superclass = Some(val)
+        }
+
         self.environment
             .borrow_mut()
             .define(name.lexeme.clone(), Literal::Nil);
+
+        if let Some(superclass) = &superclass {
+            self.environment =
+                Rc::new(RefCell::new(Environment::new(Rc::clone(&self.environment))));
+            self.environment
+                .borrow_mut()
+                .define("super".into(), Literal::Class(Rc::clone(superclass)));
+        }
         let mut function_methods = HashMap::new();
         for method in methods {
             let Stmt::Function {
@@ -469,7 +521,13 @@ impl StmtVisitor for Interpreter {
                 }),
             );
         }
-        let klass = Literal::Class(LoxClass::new(name.lexeme.clone(), function_methods));
+        let klass = Literal::Class(Rc::new(
+            LoxClass::new(name.lexeme.clone(), function_methods).superclass(superclass.clone()),
+        ));
+        if let Some(_) = superclass {
+            let environment = self.environment.borrow().enclosing.clone();
+            self.environment = environment.unwrap();
+        }
         self.environment.borrow_mut().assign(name, &klass)?;
         Ok(())
     }

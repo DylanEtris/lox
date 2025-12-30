@@ -20,6 +20,7 @@ enum FunctionType {
 enum ClassType {
     None,
     Class,
+    Subclass,
 }
 
 pub struct Resolver {
@@ -217,13 +218,37 @@ impl StmtVisitor for Resolver {
         Ok(())
     }
 
-    fn visit_class(&mut self, name: &Token, _methods: &Vec<Stmt>) -> AstResult<()> {
+    fn visit_class(
+        &mut self,
+        name: &Token,
+        _methods: &Vec<Stmt>,
+        superclass: &Option<Token>,
+    ) -> AstResult<()> {
+        let class_type = self.enclosing_class.clone();
         self.enclosing_class = ClassType::Class;
-        self.begin_scope();
 
         self.declare(name)?;
         self.define(name);
-        let class_type = self.enclosing_class.clone();
+
+        if let Some(superclass) = superclass {
+            self.enclosing_class = ClassType::Subclass;
+            if superclass.lexeme == name.lexeme {
+                return Err(RuntimeError::from_token(
+                    name.clone(),
+                    "A class can't inherit from itself.".into(),
+                ));
+            }
+            self.resolve_expr(&Expr::Variable {
+                name: superclass.clone(),
+            })?;
+        };
+        if let Some(_) = superclass {
+            self.begin_scope();
+            self.scopes.last_mut().unwrap().insert("super".into(), true);
+        };
+
+        self.begin_scope();
+
         self.scopes.last_mut().unwrap().insert("this".into(), true);
         for method in _methods {
             let Stmt::Function {
@@ -242,6 +267,10 @@ impl StmtVisitor for Resolver {
             self.resolve_function(parameters, body, declaration)?
         }
         self.end_scope();
+
+        if let Some(_) = superclass {
+            self.end_scope();
+        }
         self.enclosing_class = class_type;
         Ok(())
     }
@@ -347,6 +376,26 @@ impl ExprVisitor<()> for Resolver {
                 keyword.clone(),
                 "Cannot use 'this' outside of a class.".into(),
             ));
+        }
+        self.resolve_local(keyword);
+        Ok(())
+    }
+
+    fn visit_super_expr(&mut self, keyword: &Token, _method: &Token) -> AstResult<()> {
+        match self.enclosing_class {
+            ClassType::Subclass => {
+                return Err(RuntimeError::from_token(
+                    keyword.clone(),
+                    "Can't use 'super' with no superclass.".into(),
+                ));
+            }
+            ClassType::None => {
+                return Err(RuntimeError::from_token(
+                    keyword.clone(),
+                    "Can't use super outside of a class.".into(),
+                ));
+            }
+            _ => (),
         }
         self.resolve_local(keyword);
         Ok(())
